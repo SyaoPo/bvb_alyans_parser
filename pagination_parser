@@ -1,0 +1,68 @@
+
+import requests
+from bs4 import BeautifulSoup
+import csv
+
+CSV = "metall.csv"
+HOST = "https://bvb-alyans.ru/" # константа домин который парсим
+URL = "https://bvb-alyans.ru/metallCatalog/668/konstruktsionnaja_stal/" #константа, адрес который передается на сервер
+HEADERS = {
+    "accept": "text/html,application/xhtml+xml,application/xml;q=0.9,image/avif,image/webp,image/apng,*/*;q=0.8,application/signed-exchange;v=b3;q=0.9",
+    "user-agent": "Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/95.0.4638.69 Safari/537.36"
+} # чтобы сайт не подумал что я бот, мне нужно пробрасывать заголовки  заголовки, что это такое?
+# Парсинг в функциональном стиле так как это проще. Без классов ООП
+def get_html(url, params=""): # обращение к странице, чтобы получить содержимое страницы HTML
+    response = requests.get(url, headers=HEADERS, params=params) # используется когда js не мешает функционалу сайта
+    return response
+
+def get_content(html): # получает контент(картинку)
+    soup = BeautifulSoup(html, "html.parser")
+    items = soup.find_all("tr", itemtype="http://schema.org/Product")
+    catalog_hat = []
+
+    for item in items:
+        name = str(item.select_one(".listing-result__type a").contents[0])
+        gost = item.find("td", class_="listing-result__gost").get_text(strip=True)
+        marka = item.find("td", class_="listing-result__brand").get_text(strip=True)
+        catalog_hat.append(
+            {
+                "name": name,  # взяли текст, убрали лишние пробелы
+                "gost": gost,
+                "marka": marka
+            }
+        )
+    return catalog_hat
+
+
+def save_doc(items, path):
+    with open(path, "w", newline="") as file:
+        writer = csv.writer(file, delimiter=";")
+        writer.writerow(["Название товара", "ГОСТ", "Марка"])
+        for item in items:
+            writer.writerow([item["name"], item["gost"], item["marka"]])
+
+
+def get_last_page(html) -> int:
+    soup = BeautifulSoup(html, "html.parser")
+    last_page = soup.select(".pagination-list li")[-1].text
+    last_page = last_page.replace(" ", "")
+    return int(last_page)
+
+
+
+def parser():
+    PAGENATION = get_last_page(get_html(URL).text)
+    html = get_html(URL)
+    if html.status_code == 200:
+        catalog_hat = []
+        for page in range(1, PAGENATION + 1):
+            print(f"Прарсим страницу: {page}")
+            html = get_html(URL, params={"page": page})
+            catalog_hat.extend(get_content(html.text))
+            save_doc(catalog_hat, CSV)
+
+    else:
+        print("F*cking Error")
+
+parser()
+
